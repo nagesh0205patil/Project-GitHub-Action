@@ -1,13 +1,20 @@
 name: GitHub-CICD-Pipeline
+
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+
 jobs:
   scan:
-    name: gitleaks
-    runs-on: 
+    name: Gitleaks Scan
+    runs-on: SelfHosted-GitHub-Runner
+
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout Code
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v3
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v6
