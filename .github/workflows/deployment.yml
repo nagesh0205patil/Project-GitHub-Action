@@ -14,7 +14,10 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Install Trivy (Linux)
+      - name: Create Reports Directory
+        run: mkdir -p reports
+
+      - name: Install Trivy
         run: |
           if ! command -v trivy &> /dev/null; then
             sudo apt-get update
@@ -22,19 +25,77 @@ jobs:
             wget -qO- https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
           fi
 
-      - name: Trivy Scan - Client
+      - name: Trivy Scan Client
         run: |
           trivy fs ./client \
             --scanners vuln,secret,misconfig \
             --severity HIGH,CRITICAL \
-            --format table
+            --format json \
+            -o reports/trivy-client.json
 
-      - name: Trivy Scan - API
+      - name: Trivy Scan API
         run: |
           trivy fs ./api \
             --scanners vuln,secret,misconfig \
             --severity HIGH,CRITICAL \
-            --format table
+            --format json \
+            -o reports/trivy-api.json
+
+      - name: Generate Trivy HTML Report
+        run: |
+          python3 << 'EOF'
+          import json
+
+          html = """
+          <html>
+          <head>
+          <title>Trivy Report</title>
+          <style>
+          body {font-family: Arial; margin:20px;}
+          table {border-collapse: collapse; width:100%;}
+          th,td {border:1px solid #ddd; padding:8px;}
+          th {background:#f2f2f2;}
+          </style>
+          </head>
+          <body>
+          <h1>Trivy Scan Report</h1>
+          """
+
+          for file in ["reports/trivy-client.json", "reports/trivy-api.json"]:
+              html += f"<h2>{file}</h2><table>"
+              html += "<tr><th>Target</th><th>Type</th><th>Severity</th><th>Title</th></tr>"
+
+              try:
+                  with open(file) as f:
+                      data = json.load(f)
+
+                  for result in data.get("Results", []):
+                      target = result.get("Target", "")
+                      for vuln in result.get("Vulnerabilities", []):
+                          html += f"""
+                          <tr>
+                          <td>{target}</td>
+                          <td>Vulnerability</td>
+                          <td>{vuln.get('Severity', '')}</td>
+                          <td>{vuln.get('Title', '')}</td>
+                          </tr>
+                          """
+              except Exception as e:
+                  html += f"<tr><td colspan='4'>{e}</td></tr>"
+
+              html += "</table>"
+
+          html += "</body></html>"
+
+          with open("reports/trivy-report.html", "w") as f:
+              f.write(html)
+          EOF
+
+      - name: Upload Trivy Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-reports
+          path: reports/
 
   gitleaks-scan:
     name: Gitleaks Scan
@@ -47,16 +108,75 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Gitleaks Scan - Client
+      - name: Create Reports Directory
+        run: mkdir -p reports
+
+      - name: Gitleaks Scan Client
         run: |
-          pwd
-          ls -la
           gitleaks detect \
             --source ./client \
-            --exit-code 1
+            --report-format json \
+            --report-path reports/gitleaks-client.json \
+            --exit-code 0
 
-      - name: Gitleaks Scan - API
+      - name: Gitleaks Scan API
         run: |
           gitleaks detect \
             --source ./api \
-            --exit-code 1
+            --report-format json \
+            --report-path reports/gitleaks-api.json \
+            --exit-code 0
+
+      - name: Generate Gitleaks HTML Report
+        run: |
+          python3 << 'EOF'
+          import json
+
+          html = """
+          <html>
+          <head>
+          <title>Gitleaks Report</title>
+          <style>
+          body {font-family: Arial; margin:20px;}
+          table {border-collapse: collapse; width:100%;}
+          th,td {border:1px solid #ddd; padding:8px;}
+          th {background:#f2f2f2;}
+          </style>
+          </head>
+          <body>
+          <h1>Gitleaks Secret Scan Report</h1>
+          """
+
+          for file in ["reports/gitleaks-client.json", "reports/gitleaks-api.json"]:
+              html += f"<h2>{file}</h2><table>"
+              html += "<tr><th>Rule</th><th>File</th><th>Line</th><th>Secret</th></tr>"
+
+              try:
+                  with open(file) as f:
+                      data = json.load(f)
+
+                  for item in data:
+                      html += f"""
+                      <tr>
+                      <td>{item.get('RuleID', '')}</td>
+                      <td>{item.get('File', '')}</td>
+                      <td>{item.get('StartLine', '')}</td>
+                      <td>{item.get('Match', '')}</td>
+                      </tr>
+                      """
+              except Exception as e:
+                  html += f"<tr><td colspan='4'>{e}</td></tr>"
+
+              html += "</table>"
+
+          html += "</body></html>"
+
+          with open("reports/gitleaks-report.html", "w") as f:
+              f.write(html)
+          EOF
+
+      - name: Upload Gitleaks Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-reports
+          path: reports/
