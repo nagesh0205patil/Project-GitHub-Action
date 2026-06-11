@@ -6,9 +6,40 @@ on:
       - main
 
 jobs:
-  scan:
+  file-scanning:
+    name: Trivy File Scanning
+    runs-on: SelfHosted-GitHub-Runner
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install Trivy (Linux)
+        run: |
+          if ! command -v trivy &> /dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y wget
+            wget -qO- https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
+          fi
+
+      - name: Trivy Scan - Client
+        run: |
+          trivy fs ./client \
+            --scanners vuln,secret,misconfig \
+            --severity HIGH,CRITICAL \
+            --format table
+
+      - name: Trivy Scan - API
+        run: |
+          trivy fs ./api \
+            --scanners vuln,secret,misconfig \
+            --severity HIGH,CRITICAL \
+            --format table
+
+  gitleaks-scan:
     name: Gitleaks Scan
     runs-on: SelfHosted-GitHub-Runner
+    needs: file-scanning
 
     steps:
       - name: Checkout Code
@@ -16,9 +47,16 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Scan Current Directory
+      - name: Gitleaks Scan - Client
         run: |
           pwd
           ls -la
-          gitleaks detect --source ./client --exit-code 1
-          gitleaks detect --source ./api --exit-code 1
+          gitleaks detect \
+            --source ./client \
+            --exit-code 1
+
+      - name: Gitleaks Scan - API
+        run: |
+          gitleaks detect \
+            --source ./api \
+            --exit-code 1
