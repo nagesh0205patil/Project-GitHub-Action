@@ -12,9 +12,16 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Run Gitleaks
-        uses: gitleaks/gitleaks-action@v6
+      - name: Scan Current Directory
+        run: |
+          pwd
+          ls -la
+          gitleaks detect \
+            --source . \
+            --verbose \
+            --report-format json \
+            --report-path gitleaks-report.json
