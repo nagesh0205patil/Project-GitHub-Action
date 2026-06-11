@@ -16,12 +16,61 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Scan Current Directory
+      - name: Install Gitleaks
         run: |
-          pwd
-          ls -la
-          gitleaks detect \
-            --source . \
-            --verbose \
+          curl -sSfL https://raw.githubusercontent.com/gitleaks/gitleaks/master/scripts/install.sh | sh -s -- -b /usr/local/bin
+
+      - name: Run Gitleaks Scan
+        run: |
+          mkdir -p reports
+
+          gitleaks dir . \
             --report-format json \
-            --report-path gitleaks-report.json
+            --report-path reports/gitleaks-report.json \
+            --verbose
+
+      - name: Convert JSON to HTML
+        run: |
+          cat > reports/gitleaks-report.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Gitleaks Scan Report</title>
+            <style>
+              body { font-family: Arial, sans-serif; margin: 20px; }
+              table { border-collapse: collapse; width: 100%; }
+              th, td {
+                border: 1px solid #ddd;
+                padding: 8px;
+                text-align: left;
+              }
+              th {
+                background-color: #f2f2f2;
+              }
+              tr:nth-child(even) {
+                background-color: #f9f9f9;
+              }
+            </style>
+          </head>
+          <body>
+            <h1>Gitleaks Secret Scan Report</h1>
+            <table>
+              <tr>
+                <th>Rule</th>
+                <th>File</th>
+                <th>Line</th>
+                <th>Description</th>
+              </tr>
+          EOF
+
+          jq -r '.[] |
+          "<tr><td>\(.RuleID)</td><td>\(.File)</td><td>\(.StartLine)</td><td>\(.Description)</td></tr>"' \
+          reports/gitleaks-report.json >> reports/gitleaks-report.html
+
+          echo "</table></body></html>" >> reports/gitleaks-report.html
+
+      - name: Upload Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitleaks-reports
+          path: reports/
